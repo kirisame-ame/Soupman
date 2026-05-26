@@ -61,19 +61,20 @@ class DpgUI:
         }
         self._steps_per_second = max(1.0, 1.0 / max(self.config.step_interval, 0.001))
         self._visual_rng = random.Random(1337)
-        self._draw_width = 820
-        self._draw_height = 560
+        self._draw_width = 600
+        self._draw_height = 400
 
     def run(self) -> None:
         dpg.create_context()
         self._build_ui()
         dpg.create_viewport(
             title="Primordial Soup Replicator Simulation",
-            width=1700,
-            height=720,
+            width=1920,
+            height=1080,
         )
         dpg.setup_dearpygui()
         dpg.show_viewport()
+        dpg.maximize_viewport()
         self.metrics.update(self.engine.step_count, self.engine.environment)
 
         while dpg.is_dearpygui_running():
@@ -210,7 +211,7 @@ class DpgUI:
                 width=self._draw_width, height=self._draw_height
             )
 
-        with dpg.window(label="Metrics", width=420, height=700, pos=(1230, 10)):
+        with dpg.window(label="Metrics", width=420, height=700, pos=(1000, 10)):
             with dpg.tab_bar():
                 with dpg.tab(label="Population & Traits"):
                     with dpg.plot(label="Population", height=300, width=380):
