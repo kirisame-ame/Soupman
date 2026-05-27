@@ -1,7 +1,14 @@
 import random
 from typing import List, Tuple
 
-from .environment import SimulationConfig, Environment, clamp
+from .environment import (
+    SimulationConfig,
+    Environment,
+    clamp,
+    enforce_trait_total,
+    apply_stability_cap,
+    apply_stability_replication_tradeoff,
+)
 from .replicator import Replicator
 
 
@@ -57,6 +64,19 @@ def mutate_traits(
     replication_rate = clamp(replication_rate + delta())
     fidelity = clamp(fidelity + delta())
     stability = clamp(stability + delta())
+    replication_rate, fidelity, stability = enforce_trait_total(
+        replication_rate,
+        fidelity,
+        stability,
+        config.trait_total_cap,
+    )
+    stability = apply_stability_cap(stability, config.stability_cap)
+    replication_rate = apply_stability_replication_tradeoff(
+        replication_rate,
+        stability,
+        config.stability_replication_tradeoff_floor,
+        config.stability_replication_tradeoff_strength,
+    )
     return replication_rate, fidelity, stability
 
 

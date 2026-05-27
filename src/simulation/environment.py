@@ -9,6 +9,44 @@ def clamp(value: float, min_value: float = 0.0, max_value: float = 1.0) -> float
     return max(min_value, min(max_value, value))
 
 
+def enforce_trait_total(
+    replication_rate: float,
+    fidelity: float,
+    stability: float,
+    total_cap: float,
+) -> Tuple[float, float, float]:
+    if total_cap <= 0.0:
+        return replication_rate, fidelity, stability
+    total = replication_rate + fidelity + stability
+    if total <= 0.0 or total <= total_cap:
+        return replication_rate, fidelity, stability
+    scale = total_cap / total
+    return (
+        clamp(replication_rate * scale),
+        clamp(fidelity * scale),
+        clamp(stability * scale),
+    )
+
+
+def apply_stability_cap(stability: float, cap: float) -> float:
+    if cap <= 0.0:
+        return clamp(stability)
+    return clamp(min(stability, cap))
+
+
+def apply_stability_replication_tradeoff(
+    replication_rate: float,
+    stability: float,
+    stability_floor: float,
+    strength: float,
+) -> float:
+    if strength <= 0.0:
+        return replication_rate
+    excess = max(0.0, stability - stability_floor)
+    penalty = min(1.0, excess * strength)
+    return clamp(replication_rate * (1.0 - penalty))
+
+
 @dataclass(frozen=True)
 class LineagePreset:
     name: str
@@ -22,30 +60,30 @@ def default_lineage_presets() -> List[LineagePreset]:
     return [
         LineagePreset(
             name="High Replication",
-            replication_rate=0.10,
-            fidelity=0.90,
-            stability=0.90,
+            replication_rate=0.75,
+            fidelity=0.78,
+            stability=0.85,
             weight=0.2,
         ),
         LineagePreset(
             name="High Fidelity",
-            replication_rate=0.06,
-            fidelity=0.97,
-            stability=0.90,
+            replication_rate=0.36,
+            fidelity=0.88,
+            stability=0.92,
             weight=0.2,
         ),
         LineagePreset(
             name="High Stability",
-            replication_rate=0.06,
-            fidelity=0.90,
-            stability=0.97,
+            replication_rate=0.22,
+            fidelity=0.78,
+            stability=0.95,
             weight=0.2,
         ),
         LineagePreset(
             name="Balanced",
-            replication_rate=0.08,
-            fidelity=0.94,
-            stability=0.94,
+            replication_rate=0.32,
+            fidelity=0.82,
+            stability=0.93,
             weight=0.4,
         ),
     ]
@@ -59,15 +97,19 @@ class SimulationConfig:
     min_sequence_length: int = 6
     max_sequence_length: int = 12
     alphabet_size: int = 4
-    base_replication_rate: float = 0.08
-    base_fidelity: float = 0.98
-    base_stability: float = 0.98
+    base_replication_rate: float = 0.32
+    base_fidelity: float = 0.85
+    base_stability: float = 0.92
     replication_rate_jitter: float = 0.02
     fidelity_jitter: float = 0.01
     stability_jitter: float = 0.01
     mutation_multiplier: float = 1.0
     trait_mutation_rate: float = 0.25
     trait_mutation_strength: float = 0.05
+    trait_total_cap: float = 2.2
+    stability_replication_tradeoff_strength: float = 1.6
+    stability_replication_tradeoff_floor: float = 0.70
+    stability_cap: float = 0.93
     replication_multiplier: float = 1.0
     stability_multiplier: float = 1.0
     resource_regen_rate: int = 0
@@ -131,6 +173,22 @@ class Environment:
                         -self.config.stability_jitter, self.config.stability_jitter
                     )
                 )
+                replication_rate, fidelity, stability = enforce_trait_total(
+                    replication_rate,
+                    fidelity,
+                    stability,
+                    self.config.trait_total_cap,
+                )
+                stability = apply_stability_cap(
+                    stability,
+                    self.config.stability_cap,
+                )
+                replication_rate = apply_stability_replication_tradeoff(
+                    replication_rate,
+                    stability,
+                    self.config.stability_replication_tradeoff_floor,
+                    self.config.stability_replication_tradeoff_strength,
+                )
             self.replicators.append(
                 Replicator(
                     uid=self._allocate_uid(),
@@ -161,6 +219,22 @@ class Environment:
         )
         fidelity = clamp(preset.fidelity + self.rng.uniform(-jitter, jitter))
         stability = clamp(preset.stability + self.rng.uniform(-jitter, jitter))
+        replication_rate, fidelity, stability = enforce_trait_total(
+            replication_rate,
+            fidelity,
+            stability,
+            self.config.trait_total_cap,
+        )
+        stability = apply_stability_cap(
+            stability,
+            self.config.stability_cap,
+        )
+        replication_rate = apply_stability_replication_tradeoff(
+            replication_rate,
+            stability,
+            self.config.stability_replication_tradeoff_floor,
+            self.config.stability_replication_tradeoff_strength,
+        )
         return replication_rate, fidelity, stability
 
     def _allocate_uid(self) -> int:

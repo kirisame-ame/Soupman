@@ -31,6 +31,8 @@ class DpgUI:
         self.config = config
         self.running = False
         self.step_accumulator = 0.0
+        self._run_until_step: int | None = None
+        self._run_until_input_tag = "run_until_input"
         self.particles: Dict[int, VisualParticle] = {}
         self.drawlist_id: int | None = None
         self.plot_series: Dict[str, int] = {}
@@ -93,6 +95,17 @@ class DpgUI:
                 dpg.add_button(label="Step", callback=self._step_once)
                 dpg.add_button(label="Reset", callback=self._reset)
 
+            with dpg.group(horizontal=True):
+                dpg.add_input_int(
+                    label="Run Until",
+                    default_value=200,
+                    min_value=0,
+                    min_clamped=True,
+                    tag=self._run_until_input_tag,
+                    width=120,
+                )
+                dpg.add_button(label="Run To", callback=self._run_until)
+
             dpg.add_separator()
             dpg.add_text("Simulation")
             dpg.add_slider_float(
@@ -117,6 +130,14 @@ class DpgUI:
                 callback=self._on_stability_multiplier,
             )
             dpg.add_slider_float(
+                label="Stability Cap",
+                min_value=0.6,
+                max_value=1.0,
+                default_value=self.config.stability_cap,
+                format="%.3f",
+                callback=self._on_stability_cap,
+            )
+            dpg.add_slider_float(
                 label="Steps / Sec",
                 min_value=1,
                 max_value=120.0,
@@ -127,7 +148,7 @@ class DpgUI:
             dpg.add_slider_int(
                 label="Resource Regen",
                 min_value=0,
-                max_value=20,
+                max_value=200,
                 default_value=self.config.resource_regen_rate,
                 callback=self._on_resource_regen,
             )
@@ -285,6 +306,14 @@ class DpgUI:
                 self.engine.step()
                 self.metrics.update(self.engine.step_count, self.engine.environment)
                 self.step_accumulator -= interval
+                if (
+                    self._run_until_step is not None
+                    and self.engine.step_count >= self._run_until_step
+                ):
+                    self.running = False
+                    self._run_until_step = None
+                    dpg.set_item_label("start_btn", "Start")
+                    break
 
         self._sync_particles()
         self._update_particles(dt)
@@ -304,11 +333,20 @@ class DpgUI:
 
     def _reset(self, sender: int) -> None:
         self.running = False
+        self._run_until_step = None
         dpg.set_item_label("start_btn", "Start")
         self.engine.reset()
         self.metrics.reconfigure(self.config)
         self.metrics.update(self.engine.step_count, self.engine.environment)
         self.particles.clear()
+
+    def _run_until(self, sender: int) -> None:
+        target = int(dpg.get_value(self._run_until_input_tag))
+        if target <= self.engine.step_count:
+            return
+        self.running = True
+        self._run_until_step = target
+        dpg.set_item_label("start_btn", "Pause")
 
     def _on_replication_multiplier(self, sender: int, value: float) -> None:
         self.config.replication_multiplier = float(value)
@@ -318,6 +356,9 @@ class DpgUI:
 
     def _on_stability_multiplier(self, sender: int, value: float) -> None:
         self.config.stability_multiplier = float(value)
+
+    def _on_stability_cap(self, sender: int, value: float) -> None:
+        self.config.stability_cap = float(value)
 
     def _on_steps_per_second(self, sender: int, value: float) -> None:
         self._steps_per_second = max(1.0, float(value))
