@@ -46,6 +46,7 @@ class MetricsTracker:
         self.last_snapshot: MetricsSnapshot | None = None
         self.last_lineage_counts: Dict[str, int] = {}
         self.last_trait_class_counts: Dict[str, int] = {}
+        self.last_lineage_averages: Dict[str, Tuple[float, float, float, int]] = {}
         self._trait_ranges: Tuple[
             Tuple[float, float], Tuple[float, float], Tuple[float, float]
         ]
@@ -77,6 +78,7 @@ class MetricsTracker:
         self.last_snapshot = None
         self.last_lineage_counts = {}
         self.last_trait_class_counts = {}
+        self.last_lineage_averages = {}
 
     def update(self, step: int, env: Environment) -> MetricsSnapshot:
         population = len(env.replicators)
@@ -86,6 +88,7 @@ class MetricsTracker:
         avg_fid = self._avg([rep.fidelity for rep in env.replicators])
         avg_stab = self._avg([rep.stability for rep in env.replicators])
         lineage_counts = {name: 0 for name in self.lineage_names}
+        lineage_sums = {name: [0.0, 0.0, 0.0] for name in self.lineage_names}
         trait_class_counts = {name: 0 for name in self.trait_classes}
 
         for rep in env.replicators:
@@ -95,6 +98,9 @@ class MetricsTracker:
                 else "Unclassified"
             )
             lineage_counts[lineage_name] += 1
+            lineage_sums[lineage_name][0] += rep.replication_rate
+            lineage_sums[lineage_name][1] += rep.fidelity
+            lineage_sums[lineage_name][2] += rep.stability
             trait_class = self._classify_traits(rep)
             trait_class_counts[trait_class] += 1
 
@@ -116,6 +122,15 @@ class MetricsTracker:
 
         self.last_lineage_counts = lineage_counts
         self.last_trait_class_counts = trait_class_counts
+        self.last_lineage_averages = {
+            name: (
+                (lineage_sums[name][0] / count) if count else 0.0,
+                (lineage_sums[name][1] / count) if count else 0.0,
+                (lineage_sums[name][2] / count) if count else 0.0,
+                count,
+            )
+            for name, count in lineage_counts.items()
+        }
 
         snapshot = MetricsSnapshot(
             step=step,

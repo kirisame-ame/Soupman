@@ -44,7 +44,6 @@ class DpgUI:
         self._plot_groups = {
             "population": ["population", "diversity", "resources"],
             "traits": ["avg_replication_rate", "avg_fidelity", "avg_stability"],
-            "lineages": [f"lineage::{name}" for name in self._lineage_names],
             "trait_classes": [f"trait::{name}" for name in self._trait_classes],
         }
         self._lineage_palette = [
@@ -61,6 +60,7 @@ class DpgUI:
             "High Fidelity": (243, 156, 18, 255),
             "High Replication": (41, 128, 185, 255),
         }
+        self._lineage_display = list(self._lineage_colors.keys())
         self._steps_per_second = max(1.0, 1.0 / max(self.config.step_interval, 0.001))
         self._visual_rng = random.Random(1337)
         self._draw_width = 600
@@ -232,10 +232,10 @@ class DpgUI:
                 width=self._draw_width, height=self._draw_height
             )
 
-        with dpg.window(label="Metrics", width=420, height=700, pos=(1000, 10)):
+        with dpg.window(label="Metrics", width=500, height=700, pos=(1000, 10)):
             with dpg.tab_bar():
                 with dpg.tab(label="Population & Traits"):
-                    with dpg.plot(label="Population", height=300, width=380):
+                    with dpg.plot(label="Population", height=300, width=480):
                         x_axis = dpg.add_plot_axis(dpg.mvXAxis, label="Step")
                         y_axis = dpg.add_plot_axis(dpg.mvYAxis, label="Count")
                         self._plot_x_axes["population"] = x_axis
@@ -253,7 +253,7 @@ class DpgUI:
                         )
                         self._series_sources["resources"] = "resources"
 
-                    with dpg.plot(label="Traits", height=300, width=380):
+                    with dpg.plot(label="Traits", height=300, width=480):
                         x_axis = dpg.add_plot_axis(dpg.mvXAxis, label="Step")
                         y_axis = dpg.add_plot_axis(dpg.mvYAxis, label="Average")
                         self._plot_x_axes["traits"] = x_axis
@@ -274,19 +274,17 @@ class DpgUI:
                         self._series_sources["avg_stability"] = "avg_stability"
 
                 with dpg.tab(label="Lineages"):
-                    with dpg.plot(label="Lineage Counts", height=300, width=380):
-                        x_axis = dpg.add_plot_axis(dpg.mvXAxis, label="Step")
-                        y_axis = dpg.add_plot_axis(dpg.mvYAxis, label="Count")
-                        self._plot_x_axes["lineages"] = x_axis
-                        self._plot_y_axes["lineages"] = y_axis
-                        for name in self._lineage_names:
-                            key = f"lineage::{name}"
-                            self.plot_series[key] = dpg.add_line_series(
-                                [], [], label=name, parent=y_axis
-                            )
-                            self._series_sources[key] = name
+                    dpg.add_text("Lineage Averages (rep/fid/stab | n)")
+                    for name in self._lineage_display:
+                        dpg.add_text(
+                            f"{name}: rep 0.000 | fid 0.000 | stab 0.000 | n=0",
+                            tag=self._lineage_avg_tag(name),
+                            color=self._lineage_colors.get(name),
+                        )
 
-                    with dpg.plot(label="Trait Classes", height=300, width=380):
+                    dpg.add_spacer(height=10)
+
+                    with dpg.plot(label="Trait Classes", height=300, width=480):
                         x_axis = dpg.add_plot_axis(dpg.mvXAxis, label="Step")
                         y_axis = dpg.add_plot_axis(dpg.mvYAxis, label="Count")
                         self._plot_x_axes["trait_classes"] = x_axis
@@ -319,6 +317,7 @@ class DpgUI:
         self._update_particles(dt)
         self._draw_particles()
         self._update_stats()
+        self._update_lineage_averages()
         self._update_plots()
 
     def _toggle_running(self, sender: int) -> None:
@@ -471,6 +470,19 @@ class DpgUI:
                 "stat_dominant_trait",
                 f"Dominant Trait Class: {snapshot.dominant_trait_class}",
             )
+
+    def _update_lineage_averages(self) -> None:
+        averages = self.metrics.last_lineage_averages
+        for name in self._lineage_display:
+            rep, fid, stab, count = averages.get(name, (0.0, 0.0, 0.0, 0))
+            dpg.set_value(
+                self._lineage_avg_tag(name),
+                f"{name}: rep {rep:.3f} | fid {fid:.3f} | stab {stab:.3f} | n={count}",
+            )
+
+    @staticmethod
+    def _lineage_avg_tag(name: str) -> str:
+        return f"lineage_avg::{name}"
 
     def _update_plots(self) -> None:
         steps = self.metrics.step_series()
