@@ -51,8 +51,6 @@ src/
   scripts/         Standalone analysis utilities
 
 docs/
-  design.md        Design summary and rationale
-  current_state.md Implemented behavior and hypotheses
 ```
 
 ## Notes
